@@ -1,0 +1,74 @@
+# One-shot Windows build for https://github.com/seven0070/evo with custom icon.
+# Triggered by push to this branch (workflow_dispatch is unavailable to the agent token).
+name: Build Evo Windows
+
+env:
+  NODE_VERSION: "22"
+  PNPM_VERSION: "10.26.2"
+
+on:
+  push:
+    branches:
+      - cursor/evo-windows-build-1466
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: windows-latest
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Setup Node.js Environment
+        uses: ./.github/actions/setup-env
+        with:
+          mode: build
+
+      - name: Build CLI
+        run: pnpm run cli:build
+
+      - name: Rust cache restore
+        uses: actions/cache/restore@v4.2.0
+        id: cache_store
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            src-tauri/target/
+          key: ${{ runner.os }}-cargo-pake-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build Evo (Windows)
+        timeout-minutes: 25
+        shell: pwsh
+        run: |
+          $icon = Join-Path $env:GITHUB_WORKSPACE "icons/evo.png"
+          Write-Host "Running: node dist/cli.js https://github.com/seven0070/evo --name Evo --icon $icon --width 1200 --height 780 --app-version 1.0.0 --new-window"
+          node dist/cli.js https://github.com/seven0070/evo --name Evo --icon $icon --width 1200 --height 780 --app-version 1.0.0 --new-window
+          git checkout -- src-tauri/Cargo.lock
+
+      - name: Upload MSI (Windows)
+        uses: actions/upload-artifact@v6
+        with:
+          name: Evo-Windows
+          path: Evo.msi
+          retention-days: 7
+
+      - name: Rust cache store
+        uses: actions/cache/save@v4.2.0
+        if: steps.cache_store.outputs.cache-hit != 'true'
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            src-tauri/target/
+          key: ${{ runner.os }}-cargo-pake-${{ hashFiles('**/Cargo.lock') }}
